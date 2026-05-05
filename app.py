@@ -158,7 +158,7 @@ elif page == "🔍 Stock Analysis":
 
     with st.sidebar:
         st.markdown("### 🔍 Select Stock")
-        mode = st.radio("", ["Popular Stocks", "Custom Ticker"], horizontal=True)
+        mode = st.radio("Select Mode", ["Popular Stocks", "Custom Ticker"], horizontal=True, label_visibility="collapsed")
         if mode == "Popular Stocks":
             stock_name = st.selectbox("Company", list(POPULAR_STOCKS.keys()))
             ticker = POPULAR_STOCKS[stock_name]
