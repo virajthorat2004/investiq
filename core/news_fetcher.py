@@ -10,6 +10,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os
+try:
+    import streamlit as st
+    for k, v in st.secrets.items():
+        os.environ.setdefault(k, v)
+except Exception:
+    pass # local dev uses .env
+
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 BASE_URL = "https://newsapi.org/v2/everything"
 

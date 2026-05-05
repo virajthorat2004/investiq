@@ -13,6 +13,14 @@ from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
 
+import os
+try:
+    import streamlit as st
+    for k, v in st.secrets.items():
+        os.environ.setdefault(k, v)
+except Exception:
+    pass # local dev uses .env
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 ANALYST_PROMPT = PromptTemplate(
