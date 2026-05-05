@@ -75,7 +75,7 @@ if page == "🏠 Market Overview":
 
     with st.sidebar:
         ov_period = st.select_slider("Nifty Chart Period", options=["1mo","3mo","6mo","1y"], value="3mo")
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Refresh Data", use_container_width='stretch'):
             st.cache_data.clear()
             st.rerun()
 
@@ -113,7 +113,7 @@ if page == "🏠 Market Overview":
             yaxis=dict(gridcolor="#1e2230", title="Index Value"),
             height=300, margin=dict(l=0,r=0,t=10,b=0)
         )
-        st.plotly_chart(fig_nifty, use_container_width=True)
+        st.plotly_chart(fig_nifty, use_container_width='stretch')
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -171,18 +171,18 @@ elif page == "🔍 Stock Analysis":
 
         period = st.select_slider("Chart Period", options=["1mo","2mo","3mo","4mo","5mo","6mo","9mo","1y","18mo","2y"], value="6mo")
 
-        load_btn = st.button("🚀 Analyse Stock", use_container_width=True, type="primary")
+        load_btn = st.button("🚀 Analyse Stock", use_container_width='stretch', type="primary")
 
         if st.session_state.stock_data_loaded:
             info_s = st.session_state.current_stock_info
-            if st.button(f"➕ Add to Watchlist", use_container_width=True):
+            if st.button(f"➕ Add to Watchlist", use_container_width='stretch'):
                 add_to_watchlist(ticker)
                 st.success("Added!")
 
         st.divider()
         st.markdown("### 💬 Quick Questions")
         for q in ["Why did this stock move today?", "What is the overall sentiment?", "Should I be concerned about risks?", "Give me a buy/hold/sell outlook"]:
-            if st.button(q, use_container_width=True, key=f"qq_{q}"):
+            if st.button(q, use_container_width='stretch', key=f"qq_{q}"):
                 st.session_state.quick_question = q
 
     @st.cache_data(ttl=300)
@@ -286,11 +286,11 @@ elif page == "🔍 Stock Analysis":
                 fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df["open"], high=hist_df["high"], low=hist_df["low"], close=hist_df["close"], increasing_line_color="#22c55e", decreasing_line_color="#ef4444", name="OHLC"))
                 fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df["close"].rolling(20).mean(), line=dict(color="#667eea", width=1.5), name="MA20"))
                 fig.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230", title="Price (₹)"), xaxis_rangeslider_visible=False, height=450, margin=dict(l=0,r=0,t=20,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width='stretch')
                 clrs = ["#22c55e" if c>=o else "#ef4444" for c,o in zip(hist_df["close"],hist_df["open"])]
                 vf = go.Figure(go.Bar(x=hist_df.index, y=hist_df["volume"], marker_color=clrs))
                 vf.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), height=160, margin=dict(l=0,r=0,t=5,b=0), yaxis=dict(gridcolor="#1e2230",title="Volume"), xaxis=dict(gridcolor="#1e2230"))
-                st.plotly_chart(vf, use_container_width=True)
+                st.plotly_chart(vf, use_container_width='stretch')
 
         with tab2:
             if not hist_df.empty:
@@ -319,7 +319,7 @@ elif page == "🔍 Stock Analysis":
                 fb.add_trace(go.Scatter(x=df_ta.index, y=df_ta["bb_middle"], line=dict(color="#94a3b8",width=1), name="SMA20"))
                 fb.add_trace(go.Scatter(x=df_ta.index, y=df_ta["close"], line=dict(color="#ffffff",width=2), name="Close"))
                 fb.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230",title="Price (₹)"), height=280, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fb, use_container_width=True)
+                st.plotly_chart(fb, use_container_width='stretch')
 
                 fr = go.Figure()
                 fr.add_hrect(y0=70, y1=100, fillcolor="rgba(239,68,68,0.08)", line_width=0)
@@ -328,7 +328,7 @@ elif page == "🔍 Stock Analysis":
                 fr.add_hline(y=30, line_dash="dash", line_color="#22c55e", annotation_text="Oversold 30")
                 fr.add_trace(go.Scatter(x=df_ta.index, y=df_ta["rsi"], line=dict(color="#f59e0b",width=2), name="RSI"))
                 fr.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(range=[0,100],gridcolor="#1e2230"), height=200, margin=dict(l=0,r=0,t=10,b=0))
-                st.plotly_chart(fr, use_container_width=True)
+                st.plotly_chart(fr, use_container_width='stretch')
 
                 fm = go.Figure()
                 fm.add_trace(go.Scatter(x=df_ta.index, y=df_ta["macd"], line=dict(color="#667eea",width=2), name="MACD"))
@@ -336,7 +336,7 @@ elif page == "🔍 Stock Analysis":
                 hc = ["#22c55e" if v>=0 else "#ef4444" for v in df_ta["macd_hist"].fillna(0)]
                 fm.add_trace(go.Bar(x=df_ta.index, y=df_ta["macd_hist"], marker_color=hc, name="Histogram"))
                 fm.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230"), height=200, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fm, use_container_width=True)
+                st.plotly_chart(fm, use_container_width='stretch')
 
         with tab3:
             st.markdown("### 🆚 Compare Two Stocks")
@@ -345,7 +345,7 @@ elif page == "🔍 Stock Analysis":
             t2 = cc2.text_input("Stock 2", value="INFY.NS", key="c2")
             with cc3:
                 st.markdown("<br>", unsafe_allow_html=True)
-                cbtn = st.button("Compare", type="primary", use_container_width=True)
+                cbtn = st.button("Compare", type="primary", use_container_width='stretch')
             if cbtn:
                 with st.spinner("Fetching..."):
                     cd = get_comparison_data(t1, t2, period)
@@ -364,7 +364,7 @@ elif page == "🔍 Stock Analysis":
                     fc.add_trace(go.Scatter(x=s2["hist"].index, y=nm2, line=dict(color="#f59e0b",width=2), name=n2))
                     fc.add_hline(y=100, line_dash="dash", line_color="#4a5568")
                     fc.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230",title="Performance (Base=100)"), height=350, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                    st.plotly_chart(fc, use_container_width=True)
+                    st.plotly_chart(fc, use_container_width='stretch')
                 metrics = compare_metrics(s1,s2)
                 hc1,hc2,hc3 = st.columns([2,1,1])
                 hc1.markdown('<div style="color:#8892b0;font-size:12px;font-weight:500">METRIC</div>', unsafe_allow_html=True)
@@ -400,7 +400,7 @@ elif page == "🔍 Stock Analysis":
                     fp.add_trace(go.Scatter(x=pred["dates"]+pred["dates"][::-1], y=pred["upper"]+pred["lower"][::-1], fill="toself", fillcolor="rgba(245,158,11,0.1)", line=dict(color="rgba(0,0,0,0)"), name="Confidence Band"))
                     fp.add_trace(go.Scatter(x=pred["dates"], y=pred["prices"], line=dict(color="#f59e0b",width=2,dash="dot"), name=f"{pred_days}d Forecast"))
                     fp.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230",title="Price (₹)"), height=400, margin=dict(l=0,r=0,t=20,b=0), legend=dict(bgcolor="#1a1d2e"))
-                    st.plotly_chart(fp, use_container_width=True)
+                    st.plotly_chart(fp, use_container_width='stretch')
                     st.markdown('<p style="color:#4a5568;font-size:11px">⚠️ ML forecasts are based on historical patterns only. Not financial advice.</p>', unsafe_allow_html=True)
 
         with tab5:
@@ -419,7 +419,7 @@ elif page == "🔍 Stock Analysis":
                 if sum(dist.values())>0:
                     pf = go.Figure(go.Pie(labels=list(dist.keys()), values=list(dist.values()), hole=0.6, marker_colors=["#22c55e","#ef4444","#94a3b8"]))
                     pf.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e2e8f0"), height=230, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="rgba(0,0,0,0)"))
-                    st.plotly_chart(pf, use_container_width=True)
+                    st.plotly_chart(pf, use_container_width='stretch')
                 st.markdown(f'<div class="metric-card"><div class="metric-label">Overall</div><div class="metric-value">{sentiment.get("overall","Neutral")}</div></div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="background:#1a1d2e;border:1px solid #2d3154;border-radius:10px;padding:12px;margin-top:8px;color:#94a3b8;font-size:13px;line-height:1.7">{sentiment.get("summary","")}</div>', unsafe_allow_html=True)
 
@@ -438,7 +438,7 @@ elif page == "🔍 Stock Analysis":
             with st.form("cf", clear_on_submit=True):
                 fi1,fi2 = st.columns([5,1])
                 typed = fi1.text_input("", placeholder="Ask anything about this stock...", label_visibility="collapsed")
-                send = fi2.form_submit_button("Send", use_container_width=True)
+                send = fi2.form_submit_button("Send", use_container_width='stretch')
             if send and typed: user_input = typed
             if user_input:
                 st.session_state.chat_history.append({"role":"user","content":user_input})
@@ -460,7 +460,7 @@ elif page == "🔔 Watchlist":
     with st.sidebar:
         st.markdown("### ➕ Add Stock")
         new_t = st.text_input("Ticker (e.g. WIPRO.NS)")
-        if st.button("Add to Watchlist", use_container_width=True):
+        if st.button("Add to Watchlist", use_container_width='stretch'):
             if new_t:
                 t = new_t.strip().upper()
                 if "." not in t: t += ".NS"
@@ -493,7 +493,7 @@ elif page == "🔔 Watchlist":
                     remove_from_watchlist(w["ticker"])
                     st.rerun()
 
-        if st.button("🔄 Refresh Prices", use_container_width=False):
+        if st.button("🔄 Refresh Prices", use_container_width='content'):
             st.cache_data.clear()
             st.rerun()
 
@@ -522,7 +522,7 @@ elif page == "🏭 Sector Heatmap":
             textfont=dict(size=16, color="#ffffff"),
         ))
         fig_tree.update_layout(paper_bgcolor="#0f1117", margin=dict(l=0,r=0,t=10,b=0), height=450)
-        st.plotly_chart(fig_tree, use_container_width=True)
+        st.plotly_chart(fig_tree, use_container_width='stretch')
 
         # Bar chart
         sector_df_sorted = sector_df.sort_values("change_pct", ascending=True)
@@ -537,7 +537,7 @@ elif page == "🏭 Sector Heatmap":
             textfont=dict(color="#e2e8f0"),
         ))
         fig_bar.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230", title="% Change Today"), yaxis=dict(gridcolor="#1e2230"), height=320, margin=dict(l=0,r=60,t=10,b=0))
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width='stretch')
 
         # Top/bottom sectors
         best = sector_df.loc[sector_df["change_pct"].idxmax()]
@@ -626,7 +626,7 @@ elif page == "🧠 Portfolio Analyser":
             bar_c = ["#22c55e" if p >= 0 else "#ef4444" for p in pnls]
             fig_pnl = go.Figure(go.Bar(x=names, y=pnls, marker_color=bar_c, text=[f"{p:+.1f}%" for p in pnls], textposition="outside", textfont=dict(color="#e2e8f0")))
             fig_pnl.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230", title="P&L %"), height=300, margin=dict(l=0,r=0,t=20,b=0))
-            st.plotly_chart(fig_pnl, use_container_width=True)
+            st.plotly_chart(fig_pnl, use_container_width='stretch')
 
             # AI Analysis
             st.markdown("### 🤖 AI Portfolio Advice")
