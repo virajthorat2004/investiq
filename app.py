@@ -198,8 +198,10 @@ elif page == "🔍 Stock Analysis":
     if load_btn:
         with st.spinner(f"Loading {ticker}..."):
             stock_info, hist_df, financials, articles, sentiment, news_text = load_all_data(ticker, period)
-            if "error" in stock_info:
-                st.error(f"Could not load {ticker}.")
+            if "error" in stock_info or stock_info.get("current_price", 0) == 0:
+                st.error("⚠️ Could not load stock data right now.")
+                st.info("💡 Yahoo Finance may be busy. Wait 2-3 minutes and try again.")
+                st.stop()
             else:
                 st.session_state.current_stock_info = stock_info
                 st.session_state.hist_df = hist_df
