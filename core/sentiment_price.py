@@ -80,57 +80,63 @@ def fetch_dated_sentiment(
     if not news_api_key:
         return pd.Series(dtype=float)
 
-    clean_ticker = ticker.replace(".NS", "").replace(".BO", "")
-    query        = f"{company_name} OR {clean_ticker} stock India"
+    clean_ticker  = ticker.replace(".NS", "").replace(".BO", "")
+    # Multiple queries tried in order — broadest first to maximise article count
+    # on NewsAPI free tier which caps at 100 results and 7 days back
+    short_name    = company_name.split()[0] if company_name else clean_ticker
+    # Try progressively broader queries if the first returns too few
+    query_options = [
+        f"{company_name} OR {clean_ticker}",          # exact name + ticker
+        f"{short_name} OR {clean_ticker} stock",      # short name + stock keyword
+        f"{clean_ticker}",                             # ticker only as fallback
+    ]
     from_date    = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    params = {
-        "q":        query,
-        "from":     from_date,
-        "sortBy":   "publishedAt",
-        "language": "en",
-        "pageSize": 100,          # max for free tier
-        "apiKey":   news_api_key,
-    }
-
-    try:
-        resp = requests.get(
-            "https://newsapi.org/v2/everything",
-            params=params,
-            timeout=12,
-        )
-        data = resp.json()
-        if data.get("status") != "ok":
-            return pd.Series(dtype=float)
-
-        articles = data.get("articles", [])
-        if not articles:
-            return pd.Series(dtype=float)
-
-        rows = []
-        for art in articles:
-            title = art.get("title", "") or ""
-            desc  = art.get("description", "") or ""
-            pub   = art.get("publishedAt", "")
-            if not pub or title == "[Removed]":
+    all_rows = []
+    for query in query_options:
+        params = {
+            "q":        query,
+            "from":     from_date,
+            "sortBy":   "publishedAt",
+            "language": "en",
+            "pageSize": 100,
+            "apiKey":   news_api_key,
+        }
+        try:
+            resp = requests.get(
+                "https://newsapi.org/v2/everything",
+                params=params,
+                timeout=12,
+            )
+            data = resp.json()
+            if data.get("status") != "ok":
                 continue
-            try:
-                date = datetime.fromisoformat(pub.replace("Z", "+00:00")).date()
-            except ValueError:
-                continue
-            score = _score_text(f"{title} {desc}")
-            rows.append({"date": date, "score": score})
+            articles = data.get("articles", [])
+            for art in articles:
+                title = art.get("title", "") or ""
+                desc  = art.get("description", "") or ""
+                pub   = art.get("publishedAt", "")
+                if not pub or title == "[Removed]":
+                    continue
+                try:
+                    date = datetime.fromisoformat(pub.replace("Z", "+00:00")).date()
+                except ValueError:
+                    continue
+                score = _score_text(f"{title} {desc}")
+                all_rows.append({"date": date, "score": score})
+            if len(all_rows) >= 10:   # enough — stop trying broader queries
+                break
+        except Exception:
+            continue
 
-        if not rows:
-            return pd.Series(dtype=float)
-
-        df = pd.DataFrame(rows)
-        # Daily average — multiple articles on same day are averaged
-        daily = df.groupby("date")["score"].mean().sort_index()
-        return daily
-
-    except Exception:
+    if not all_rows:
         return pd.Series(dtype=float)
+
+    df = pd.DataFrame(all_rows).drop_duplicates()
+    daily = df.groupby("date")["score"].mean().sort_index()
+    return daily
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +209,7 @@ def calc_lag_correlation(
     }).dropna()
 
     n = len(combined)
-    if n < 5:
+    if n < 3:
         return {
             "lag": lag, "n": n,
             "pearson_r": None, "pearson_p": None,
@@ -227,10 +233,36 @@ def calc_lag_correlation(
 # MAIN ANALYSIS FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
 
+def sentiment_from_articles(articles: list[dict]) -> pd.Series:
+    """
+    Converts a list of pre-loaded news articles (from fetch_stock_news) into
+    a date-indexed sentiment Series.  Used as fallback when NewsAPI returns
+    too few results via the direct fetch path.
+    """
+    rows = []
+    for art in articles:
+        pub = art.get("published_at", "") or art.get("publishedAt", "")
+        if not pub:
+            continue
+        try:
+            date = datetime.fromisoformat(pub[:10]).date()
+        except ValueError:
+            continue
+        text  = f"{art.get('title','')} {art.get('description','')}"
+        score = _score_text(text)
+        rows.append({"date": date, "score": score})
+    if not rows:
+        return pd.Series(dtype=float)
+    df    = pd.DataFrame(rows)
+    daily = df.groupby("date")["score"].mean().sort_index()
+    return daily
+
+
 def analyse_sentiment_price(
     company_name: str,
     ticker: str,
     test_lags: list[int] = [0, 1, 2, 3],
+    preloaded_articles: list[dict] | None = None,
 ) -> dict:
     """
     Full sentiment–price correlation analysis.
@@ -252,12 +284,20 @@ def analyse_sentiment_price(
     }
     """
     sentiment_series = fetch_dated_sentiment(company_name, ticker, days=30)
+    # If NewsAPI returned too few days, supplement with pre-loaded articles
+    if len(sentiment_series) < 3 and preloaded_articles:
+        fallback = sentiment_from_articles(preloaded_articles)
+        if not fallback.empty:
+            # Merge: API data takes priority on overlapping dates
+            combined = fallback.copy()
+            combined.update(sentiment_series)
+            sentiment_series = combined.sort_index()
     price_series     = get_price_series(ticker, days=35)
     price_returns    = get_price_returns(price_series)
 
     article_count = len(sentiment_series)
 
-    # Need at least 5 days of overlap to say anything meaningful
+    # Block only if we have literally nothing to show
     if sentiment_series.empty or price_returns.empty:
         return {
             "has_data":      False,
@@ -340,8 +380,9 @@ def analyse_sentiment_price(
             f"Based on {best['n']} overlapping trading days."
         )
 
+    # has_data = True as long as we fetched any sentiment — chart still shows even if correlation is sparse
     return {
-        "has_data":          len(valid) > 0,
+        "has_data":          article_count > 0,
         "article_count":     article_count,
         "sentiment_series":  sentiment_series,
         "price_series":      price_series,
