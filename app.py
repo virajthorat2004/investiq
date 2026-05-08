@@ -479,6 +479,7 @@ elif page == "🔍 Stock Analysis":
                     sp_result = analyse_sentiment_price(
                         info.get("name", ticker),
                         ticker,
+                        preloaded_articles=articles,  # reuse already-fetched articles
                     )
                     st.session_state["sp_result"] = sp_result
  
