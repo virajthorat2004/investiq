@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
+from core.sentiment_price import analyse_sentiment_price
 from core.stock_data import get_stock_info, get_historical_data, get_financials_summary, POPULAR_STOCKS, format_market_cap
 from core.news_fetcher import fetch_stock_news, format_news_for_rag
 from core.sentiment import analyze_articles_sentiment, get_sentiment_emoji, analyze_sentiment
@@ -271,7 +272,7 @@ elif page == "🔍 Stock Analysis":
         c5.markdown(f'<div class="metric-card"><div class="metric-label">Sentiment</div><div class="metric-value" style="font-size:18px">{sentiment.get("overall","Neutral")}</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs(["📈 Chart","📊 Technicals","🆚 Compare","🔮 Prediction","📰 News","💬 AI Chat"])
+        tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs(["📈 Chart","📊 Technicals","🆚 Compare","🔮 Prediction","📰 News","📡 Sentiment Analysis","💬 AI Chat"])
 
         # PDF Download button
         with st.expander("📄 Download Research Report (PDF)"):
@@ -462,6 +463,255 @@ elif page == "🔍 Stock Analysis":
                 st.markdown(f'<div style="background:#1a1d2e;border:1px solid #2d3154;border-radius:10px;padding:12px;margin-top:8px;color:#94a3b8;font-size:13px;line-height:1.7">{sentiment.get("summary","")}</div>', unsafe_allow_html=True)
 
         with tab6:
+            st.markdown(f"### 📡 Sentiment vs Price Correlation — {info['name']}")
+            st.markdown(
+                '<p style="color:#8892b0;font-size:13px">'
+                "Analyses whether news sentiment over the last 30 days preceded price movements. "
+                "Tests lags of 0–3 days and reports Pearson r and Spearman ρ. "
+                "Requires an active NewsAPI key."
+                "</p>",
+                unsafe_allow_html=True,
+            )
+ 
+            if st.button("🔍 Run Sentiment–Price Analysis", type="primary", key="run_sent_price"):
+                with st.spinner("Fetching dated news + computing correlations..."):
+                    from core.sentiment_price import analyse_sentiment_price
+                    sp_result = analyse_sentiment_price(
+                        info.get("name", ticker),
+                        ticker,
+                    )
+                    st.session_state["sp_result"] = sp_result
+ 
+            sp = st.session_state.get("sp_result")
+ 
+            # Clear result if user switched stock
+            if sp and st.session_state.get("sp_ticker") != ticker:
+                sp = None
+                st.session_state.pop("sp_result", None)
+            st.session_state["sp_ticker"] = ticker
+ 
+            if sp is None:
+                st.info("👆 Click the button above to run the analysis for the currently loaded stock.")
+ 
+            elif not sp["has_data"]:
+                st.warning(
+                    f"⚠️ {sp.get('reason', 'Insufficient data.')} "
+                    f"Articles found: {sp['article_count']}. "
+                    "This feature requires a NewsAPI key and at least 5 days of overlapping news + price data."
+                )
+ 
+            else:
+                # ── KPI row ──────────────────────────────────────────────
+                best_r = sp["best_pearson_r"]
+                best_s = sp["best_spearman_r"]
+                best_p = sp["best_pearson_p"]
+                best_lag = sp["best_lag"]
+ 
+                # Colour code by strength
+                def corr_color(r):
+                    if r is None: return "#94a3b8"
+                    if abs(r) >= 0.5: return "#22c55e" if r > 0 else "#ef4444"
+                    if abs(r) >= 0.3: return "#86efac" if r > 0 else "#fca5a5"
+                    return "#f59e0b"
+ 
+                rc1, rc2, rc3, rc4 = st.columns(4)
+                rc1.markdown(f'''<div class="metric-card">
+                    <div class="metric-label">Pearson r (best lag)</div>
+                    <div class="metric-value" style="color:{corr_color(best_r)}">{f"{best_r:.3f}" if best_r is not None else "N/A"}</div>
+                    <div style="color:#8892b0;font-size:11px">linear correlation</div>
+                </div>''', unsafe_allow_html=True)
+ 
+                rc2.markdown(f'''<div class="metric-card">
+                    <div class="metric-label">Spearman ρ (best lag)</div>
+                    <div class="metric-value" style="color:{corr_color(best_s)}">{f"{best_s:.3f}" if best_s is not None else "N/A"}</div>
+                    <div style="color:#8892b0;font-size:11px">rank correlation</div>
+                </div>''', unsafe_allow_html=True)
+ 
+                p_color = "#22c55e" if best_p is not None and best_p < 0.05 else (
+                          "#f59e0b" if best_p is not None and best_p < 0.15 else "#ef4444")
+                rc3.markdown(f'''<div class="metric-card">
+                    <div class="metric-label">p-value</div>
+                    <div class="metric-value" style="color:{p_color}">{f"{best_p:.3f}" if best_p is not None else "N/A"}</div>
+                    <div style="color:#8892b0;font-size:11px">{"significant ✓" if best_p and best_p < 0.05 else "not significant"}</div>
+                </div>''', unsafe_allow_html=True)
+ 
+                rc4.markdown(f'''<div class="metric-card">
+                    <div class="metric-label">Strongest Lag</div>
+                    <div class="metric-value">{f"{best_lag}d" if best_lag is not None else "N/A"}</div>
+                    <div style="color:#8892b0;font-size:11px">{"same day" if best_lag == 0 else f"sentiment leads price by {best_lag}d"}</div>
+                </div>''', unsafe_allow_html=True)
+ 
+                # Interpretation banner
+                st.markdown(
+                    f'<div style="background:#1a1d2e;border:1px solid #2d3154;border-radius:10px;'
+                    f'padding:14px 18px;margin:12px 0;color:#e2e8f0;font-size:13px;line-height:1.8">'
+                    f'🔬 <b>Finding:</b> {sp["interpretation"]}</div>',
+                    unsafe_allow_html=True,
+                )
+ 
+                st.markdown("<br>", unsafe_allow_html=True)
+ 
+                # ── Dual-axis chart: sentiment bars + price line ──────────
+                merged = sp["merged_df"]
+                if not merged.empty:
+                    st.markdown("#### 📊 Daily Sentiment Score vs Price Movement")
+ 
+                    dates        = [str(d) for d in merged.index]
+                    sent_vals    = merged["sentiment"].fillna(0).tolist()
+                    price_vals   = merged["price"].ffill().tolist()
+                    return_vals  = merged["price_return"].tolist()
+ 
+                    bar_colors = [
+                        "#22c55e" if s > 0.05 else ("#ef4444" if s < -0.05 else "#94a3b8")
+                        for s in sent_vals
+                    ]
+ 
+                    from plotly.subplots import make_subplots
+                    import plotly.graph_objects as go_sp
+ 
+                    fig_sp = make_subplots(
+                        rows=2, cols=1,
+                        shared_xaxes=True,
+                        row_heights=[0.6, 0.4],
+                        vertical_spacing=0.06,
+                        subplot_titles=("Close Price (₹)", "Daily Sentiment Score"),
+                    )
+ 
+                    # Price line
+                    fig_sp.add_trace(go_sp.Scatter(
+                        x=dates, y=price_vals,
+                        line=dict(color="#667eea", width=2),
+                        name="Close Price",
+                        fill="tozeroy",
+                        fillcolor="rgba(102,126,234,0.07)",
+                    ), row=1, col=1)
+ 
+                    # Sentiment bars
+                    fig_sp.add_trace(go_sp.Bar(
+                        x=dates, y=sent_vals,
+                        marker_color=bar_colors,
+                        name="Sentiment Score",
+                    ), row=2, col=1)
+ 
+                    # Zero line on sentiment
+                    fig_sp.add_hline(y=0, line_dash="dot", line_color="#4a5568", row=2, col=1)
+ 
+                    fig_sp.update_layout(
+                        paper_bgcolor="#0f1117",
+                        plot_bgcolor="#0f1117",
+                        font=dict(color="#e2e8f0"),
+                        height=460,
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        legend=dict(bgcolor="#1a1d2e"),
+                        showlegend=True,
+                    )
+                    for axis in ["xaxis", "xaxis2", "yaxis", "yaxis2"]:
+                        fig_sp.update_layout(**{axis: dict(gridcolor="#1e2230")})
+ 
+                    st.plotly_chart(fig_sp, use_container_width=True)
+ 
+                # ── Lag correlation table ────────────────────────────────
+                st.markdown("#### 🔗 Correlation at Each Lag")
+                st.markdown(
+                    '<p style="color:#8892b0;font-size:12px">'
+                    "Each row tests: 'did sentiment on day N predict price return on day N+lag?'</p>",
+                    unsafe_allow_html=True,
+                )
+ 
+                lag_results = sp["lag_results"]
+                if lag_results:
+                    hc = st.columns([1, 1, 1, 1, 1])
+                    for col, lbl in zip(hc, ["Lag (days)", "Pearson r", "Spearman ρ", "p-value", "Signal"]):
+                        col.markdown(
+                            f'<div style="color:#8892b0;font-size:11px;font-weight:500;'
+                            f'border-bottom:1px solid #2d3154;padding-bottom:6px">{lbl}</div>',
+                            unsafe_allow_html=True,
+                        )
+ 
+                    for lr in lag_results:
+                        pr  = lr["pearson_r"]
+                        sr  = lr["spearman_r"]
+                        pp  = lr["pearson_p"]
+                        is_best = (lr["lag"] == best_lag)
+                        row_bg  = "background:#252840;" if is_best else ""
+ 
+                        if pr is None:
+                            sig_label, sig_color = "No data", "#4a5568"
+                        elif pp < 0.05 and abs(pr) > 0.3:
+                            sig_label, sig_color = "✓ Significant", "#22c55e"
+                        elif pp < 0.15:
+                            sig_label, sig_color = "~ Marginal", "#f59e0b"
+                        else:
+                            sig_label, sig_color = "✗ Weak", "#4a5568"
+ 
+                        lag_label = f"{'⭐ ' if is_best else ''}+{lr['lag']}d"
+                        rc = st.columns([1, 1, 1, 1, 1])
+                        rc[0].markdown(f'<div style="{row_bg}color:#e2e8f0;font-size:13px;padding:5px 0">{lag_label}</div>', unsafe_allow_html=True)
+                        rc[1].markdown(f'<div style="{row_bg}color:{corr_color(pr)};font-size:13px;padding:5px 0">{f"{pr:.3f}" if pr is not None else "N/A"}</div>', unsafe_allow_html=True)
+                        rc[2].markdown(f'<div style="{row_bg}color:{corr_color(sr)};font-size:13px;padding:5px 0">{f"{sr:.3f}" if sr is not None else "N/A"}</div>', unsafe_allow_html=True)
+                        rc[3].markdown(f'<div style="{row_bg}color:#94a3b8;font-size:13px;padding:5px 0">{f"{pp:.3f}" if pp is not None else "N/A"}</div>', unsafe_allow_html=True)
+                        rc[4].markdown(f'<div style="{row_bg}color:{sig_color};font-size:13px;padding:5px 0">{sig_label}</div>', unsafe_allow_html=True)
+ 
+                # ── Scatter: sentiment vs next-day return ────────────────
+                if not merged.empty and best_lag is not None:
+                    st.markdown(f"#### 🔵 Scatter: Sentiment vs Price Return (+{best_lag}d lag)")
+                    shifted_returns = sp["price_returns"].shift(-best_lag)
+                    scatter_df = pd.DataFrame({
+                        "sentiment":    sp["sentiment_series"],
+                        "price_return": shifted_returns,
+                    }).dropna()
+ 
+                    if len(scatter_df) >= 4:
+                        # Trendline
+                        m, b = np.polyfit(scatter_df["sentiment"], scatter_df["price_return"], 1)
+                        x_line = np.linspace(scatter_df["sentiment"].min(), scatter_df["sentiment"].max(), 50)
+                        y_line = m * x_line + b
+ 
+                        dot_colors = [
+                            "#22c55e" if r > 0 else "#ef4444"
+                            for r in scatter_df["price_return"]
+                        ]
+ 
+                        fig_sc = go.Figure()
+                        fig_sc.add_trace(go.Scatter(
+                            x=scatter_df["sentiment"].tolist(),
+                            y=scatter_df["price_return"].tolist(),
+                            mode="markers",
+                            marker=dict(color=dot_colors, size=9, opacity=0.85),
+                            text=[str(d) for d in scatter_df.index],
+                            hovertemplate="Date: %{text}<br>Sentiment: %{x:.3f}<br>Return: %{y:.2f}%<extra></extra>",
+                            name="Daily data",
+                        ))
+                        fig_sc.add_trace(go.Scatter(
+                            x=x_line.tolist(), y=y_line.tolist(),
+                            mode="lines",
+                            line=dict(color="#667eea", width=2, dash="dash"),
+                            name="Trend",
+                        ))
+                        fig_sc.add_vline(x=0, line_dash="dot", line_color="#4a5568")
+                        fig_sc.add_hline(y=0, line_dash="dot", line_color="#4a5568")
+                        fig_sc.update_layout(
+                            paper_bgcolor="#0f1117",
+                            plot_bgcolor="#0f1117",
+                            font=dict(color="#e2e8f0"),
+                            xaxis=dict(gridcolor="#1e2230", title="Sentiment Score (day N)"),
+                            yaxis=dict(gridcolor="#1e2230", title=f"Price Return % (day N+{best_lag})"),
+                            height=320,
+                            margin=dict(l=0, r=0, t=20, b=0),
+                            legend=dict(bgcolor="#1a1d2e"),
+                        )
+                        st.plotly_chart(fig_sc, use_container_width=True)
+ 
+                st.markdown(
+                    '<p style="color:#4a5568;font-size:11px;margin-top:8px">'
+                    "⚠️ Correlation does not imply causation. Based on limited news data and short time window. "
+                    "Not financial advice.</p>",
+                    unsafe_allow_html=True,
+                )
+ 
+                st.markdown(f'<div style="color:#8892b0;font-size:11px">Articles analysed: {sp["article_count"]} · Days with news: {len(sp["sentiment_series"])}</div>', unsafe_allow_html=True)
+      
+        with tab7:
             st.markdown(f"### 💬 Ask Anything About {info['name']}")
             st.markdown('<p style="color:#8892b0;font-size:13px">Powered by LLaMA 3 + RAG — grounded in real news & fundamentals</p>', unsafe_allow_html=True)
             for msg in st.session_state.chat_history:
