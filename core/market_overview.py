@@ -1,9 +1,11 @@
 """
 core/market_overview.py
 Nifty 50, Sensex live data + top gainers/losers of the day.
+Fixed: Added @st.cache_data(ttl=180) to get_index_data() and get_nifty_history()
 """
 import yfinance as yf
 import pandas as pd
+import streamlit as st
 
 
 INDICES = {
@@ -23,8 +25,12 @@ NIFTY50_STOCKS = [
 ]
 
 
+@st.cache_data(ttl=180)
 def get_index_data() -> list[dict]:
-    """Fetches live data for major Indian indices."""
+    """
+    Fetches live data for major Indian indices.
+    Cached for 3 minutes to avoid hammering Yahoo Finance on every rerun.
+    """
     results = []
     for name, ticker in INDICES.items():
         try:
@@ -47,12 +53,21 @@ def get_index_data() -> list[dict]:
                 "change_pct": round(change_pct, 2),
             })
         except Exception:
-            results.append({"name": name, "ticker": ticker, "value": 0, "change": 0, "change_pct": 0})
+            results.append({
+                "name": name,
+                "ticker": ticker,
+                "value": 0,
+                "change": 0,
+                "change_pct": 0,
+            })
     return results
 
 
 def get_top_gainers_losers(n: int = 5) -> dict:
-    """Fetches top N gainers and losers from Nifty 50 stocks."""
+    """
+    Fetches top N gainers and losers from Nifty 50 stocks.
+    Not cached — only called on button click so no need.
+    """
     movers = []
     for ticker in NIFTY50_STOCKS:
         try:
@@ -78,8 +93,12 @@ def get_top_gainers_losers(n: int = 5) -> dict:
     }
 
 
+@st.cache_data(ttl=180)
 def get_nifty_history(period: str = "1mo") -> pd.DataFrame:
-    """Returns Nifty 50 historical data for chart."""
+    """
+    Returns Nifty 50 historical data for chart.
+    Cached for 3 minutes — chart data doesn't change second by second.
+    """
     try:
         df = yf.Ticker("^NSEI").history(period=period)
         df.index = pd.to_datetime(df.index)
