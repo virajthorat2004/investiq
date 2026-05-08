@@ -840,8 +840,10 @@ elif page == "🧠 Portfolio Analyser":
                 st.plotly_chart(fig_corr, use_container_width=True)
 
                 # Highlight highest off-diagonal correlation pair
-                corr_vals = corr_matrix.copy()
-                np.fill_diagonal(corr_vals.values, np.nan)
+                # .values on a pandas DataFrame is read-only in numpy 2.x — must copy to a writable array
+                corr_arr = corr_matrix.values.astype(float)
+                np.fill_diagonal(corr_arr, np.nan)
+                corr_vals = pd.DataFrame(corr_arr, index=corr_matrix.index, columns=corr_matrix.columns)
                 max_idx   = np.unravel_index(np.nanargmax(corr_vals.values), corr_vals.shape)
                 min_idx   = np.unravel_index(np.nanargmin(corr_vals.values), corr_vals.shape)
                 t_max_a   = short_labels[max_idx[0]]; t_max_b = short_labels[max_idx[1]]
