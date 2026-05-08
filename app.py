@@ -620,11 +620,11 @@ elif page == "🏭 Sector Heatmap":
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# PAGE 4: PORTFOLIO ANALYSER
+# PAGE 4: PORTFOLIO ANALYSER  (v2.0 — Sharpe, Beta, Correlation)
 # ════════════════════════════════════════════════════════════════════════════
 elif page == "🧠 Portfolio Analyser":
     st.markdown('<div class="app-title">🧠 AI Portfolio Analyser</div>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center;color:#8892b0">Upload your holdings — get live P&L, sentiment analysis & AI advice</p>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align:center;color:#8892b0">Upload your holdings — get live P&L, risk metrics, correlation & AI advice</p>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     with st.sidebar:
@@ -655,10 +655,12 @@ elif page == "🧠 Portfolio Analyser":
         if df_port is None:
             st.error("Invalid CSV format. Please check columns: stock, ticker, qty, buy_price")
         else:
-            with st.spinner("Analysing your portfolio — fetching live prices & news..."):
+            with st.spinner("Analysing your portfolio — fetching live prices, risk metrics & news..."):
                 analysis = analyse_portfolio(df_port)
 
-            # Summary KPIs
+            metrics = analysis.get("metrics", {})
+
+            # ── Row 1: P&L KPIs ───────────────────────────────────────────
             pnl_clr = "#22c55e" if analysis["total_pnl"] >= 0 else "#ef4444"
             pnl_arr = "▲" if analysis["total_pnl"] >= 0 else "▼"
             c1,c2,c3,c4 = st.columns(4)
@@ -669,39 +671,207 @@ elif page == "🧠 Portfolio Analyser":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Holdings breakdown
+            # ── Row 2: Risk Metric KPIs ────────────────────────────────────
+            st.markdown("### 📐 Risk Metrics")
+
+            sharpe = metrics.get("sharpe_ratio")
+            p_beta = metrics.get("portfolio_beta")
+
+            # Sharpe colour coding
+            if sharpe is None:
+                s_val, s_color, s_desc = "N/A", "#94a3b8", "Insufficient data"
+            elif sharpe >= 2:
+                s_val, s_color, s_desc = f"{sharpe:.2f}", "#22c55e", "Excellent risk-adjusted return"
+            elif sharpe >= 1:
+                s_val, s_color, s_desc = f"{sharpe:.2f}", "#86efac", "Good risk-adjusted return"
+            elif sharpe >= 0:
+                s_val, s_color, s_desc = f"{sharpe:.2f}", "#f59e0b", "Moderate — close to risk-free"
+            else:
+                s_val, s_color, s_desc = f"{sharpe:.2f}", "#ef4444", "Below risk-free rate"
+
+            # Beta colour coding
+            if p_beta is None:
+                b_val, b_color, b_desc = "N/A", "#94a3b8", "Insufficient data"
+            elif p_beta > 1.3:
+                b_val, b_color, b_desc = f"{p_beta:.2f}", "#ef4444", "More volatile than Nifty 50"
+            elif p_beta > 0.8:
+                b_val, b_color, b_desc = f"{p_beta:.2f}", "#22c55e", "Moves in line with market"
+            elif p_beta > 0:
+                b_val, b_color, b_desc = f"{p_beta:.2f}", "#f59e0b", "Defensive — lower than Nifty"
+            else:
+                b_val, b_color, b_desc = f"{p_beta:.2f}", "#94a3b8", "Inverse or neutral"
+
+            r1, r2, r3 = st.columns(3)
+            r1.markdown(f'''<div class="metric-card">
+                <div class="metric-label">Sharpe Ratio (1Y)</div>
+                <div class="metric-value" style="color:{s_color}">{s_val}</div>
+                <div style="color:{s_color};font-size:12px">{s_desc}</div>
+                <div style="color:#8892b0;font-size:11px;margin-top:4px">Risk-free rate = 7% p.a.</div>
+            </div>''', unsafe_allow_html=True)
+
+            r2.markdown(f'''<div class="metric-card">
+                <div class="metric-label">Portfolio Beta vs Nifty 50</div>
+                <div class="metric-value" style="color:{b_color}">{b_val}</div>
+                <div style="color:{b_color};font-size:12px">{b_desc}</div>
+                <div style="color:#8892b0;font-size:11px;margin-top:4px">β=1 moves exactly with Nifty</div>
+            </div>''', unsafe_allow_html=True)
+
+            # Winners/Losers mini card
+            w_pct = round(analysis["winners"] / len(analysis["holdings"]) * 100) if analysis["holdings"] else 0
+            r3.markdown(f'''<div class="metric-card">
+                <div class="metric-label">Win Rate</div>
+                <div class="metric-value" style="color:{"#22c55e" if w_pct>=50 else "#ef4444"}">{w_pct}%</div>
+                <div style="color:#8892b0;font-size:12px">{analysis["winners"]} winners · {analysis["losers"]} losers</div>
+            </div>''', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ── Holdings Breakdown (now includes Weight & Beta columns) ────
             st.markdown("### 📋 Holdings Breakdown")
-            hdr = st.columns([3,1,1,1,1,1,1])
-            for col, lbl in zip(hdr, ["Stock","Qty","Buy Price","Current","Invested","P&L","Sentiment"]):
+            hdr = st.columns([3,1,1,1,1,1,1,1])
+            for col, lbl in zip(hdr, ["Stock","Qty","Buy ₹","Now ₹","Weight","P&L","Beta","Sentiment"]):
                 col.markdown(f'<div style="color:#8892b0;font-size:11px;font-weight:500;border-bottom:1px solid #2d3154;padding-bottom:6px">{lbl}</div>', unsafe_allow_html=True)
 
             for h in analysis["holdings"]:
                 pclr = "#22c55e" if h["pnl"] >= 0 else "#ef4444"
-                sc = {"Bullish 📈":"#22c55e","Bearish 📉":"#ef4444"}.get(h["sentiment"],"#94a3b8")
-                cols = st.columns([3,1,1,1,1,1,1])
-                cols[0].markdown(f'<div style="color:#e2e8f0;font-size:13px;padding:6px 0">{h["name"][:25]}</div>', unsafe_allow_html=True)
+                sc   = {"Bullish 📈":"#22c55e","Bearish 📉":"#ef4444"}.get(h["sentiment"],"#94a3b8")
+                beta_h = h.get("beta")
+                beta_str = f"{beta_h:.2f}" if beta_h is not None else "N/A"
+                if beta_h is not None:
+                    beta_clr = "#ef4444" if beta_h > 1.3 else ("#22c55e" if beta_h > 0.7 else "#f59e0b")
+                else:
+                    beta_clr = "#94a3b8"
+
+                cols = st.columns([3,1,1,1,1,1,1,1])
+                cols[0].markdown(f'<div style="color:#e2e8f0;font-size:13px;padding:6px 0">{h["name"][:22]}</div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div style="color:#94a3b8;font-size:13px;padding:6px 0">{h["qty"]:.0f}</div>', unsafe_allow_html=True)
                 cols[2].markdown(f'<div style="color:#94a3b8;font-size:13px;padding:6px 0">₹{h["buy_price"]:.0f}</div>', unsafe_allow_html=True)
                 cols[3].markdown(f'<div style="color:#ffffff;font-size:13px;padding:6px 0;font-weight:500">₹{h["current_price"]:.0f}</div>', unsafe_allow_html=True)
-                cols[4].markdown(f'<div style="color:#94a3b8;font-size:13px;padding:6px 0">₹{h["invested"]:,.0f}</div>', unsafe_allow_html=True)
+                cols[4].markdown(f'<div style="color:#94a3b8;font-size:13px;padding:6px 0">{h["weight_pct"]:.1f}%</div>', unsafe_allow_html=True)
                 cols[5].markdown(f'<div style="color:{pclr};font-size:13px;padding:6px 0;font-weight:500">{h["pnl_pct"]:+.1f}%</div>', unsafe_allow_html=True)
-                cols[6].markdown(f'<div style="color:{sc};font-size:12px;padding:6px 0">{h["sentiment"]}</div>', unsafe_allow_html=True)
+                cols[6].markdown(f'<div style="color:{beta_clr};font-size:13px;padding:6px 0">{beta_str}</div>', unsafe_allow_html=True)
+                cols[7].markdown(f'<div style="color:{sc};font-size:12px;padding:6px 0">{h["sentiment"]}</div>', unsafe_allow_html=True)
 
-            # P&L waterfall chart
-            st.markdown("<br>")
-            st.markdown("### 📊 P&L by Stock")
-            names = [h["name"][:15] for h in analysis["holdings"]]
-            pnls = [h["pnl_pct"] for h in analysis["holdings"]]
-            bar_c = ["#22c55e" if p >= 0 else "#ef4444" for p in pnls]
-            fig_pnl = go.Figure(go.Bar(x=names, y=pnls, marker_color=bar_c, text=[f"{p:+.1f}%" for p in pnls], textposition="outside", textfont=dict(color="#e2e8f0")))
-            fig_pnl.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230", title="P&L %"), height=300, margin=dict(l=0,r=0,t=20,b=0))
-            st.plotly_chart(fig_pnl, width='stretch')
+            st.markdown("<br>", unsafe_allow_html=True)
 
-            # AI Analysis
+            # ── Charts row ────────────────────────────────────────────────
+            chart_col1, chart_col2 = st.columns(2)
+
+            with chart_col1:
+                st.markdown("### 📊 P&L by Stock")
+                names  = [h["name"][:15] for h in analysis["holdings"]]
+                pnls   = [h["pnl_pct"] for h in analysis["holdings"]]
+                bar_c  = ["#22c55e" if p >= 0 else "#ef4444" for p in pnls]
+                fig_pnl = go.Figure(go.Bar(
+                    x=names, y=pnls,
+                    marker_color=bar_c,
+                    text=[f"{p:+.1f}%" for p in pnls],
+                    textposition="outside",
+                    textfont=dict(color="#e2e8f0"),
+                ))
+                fig_pnl.update_layout(
+                    paper_bgcolor="#0f1117", plot_bgcolor="#0f1117",
+                    font=dict(color="#e2e8f0"),
+                    xaxis=dict(gridcolor="#1e2230"),
+                    yaxis=dict(gridcolor="#1e2230", title="P&L %"),
+                    height=300, margin=dict(l=0,r=0,t=20,b=0),
+                )
+                st.plotly_chart(fig_pnl, use_container_width=True)
+
+            with chart_col2:
+                st.markdown("### 🥧 Portfolio Weight")
+                weights = [h["weight_pct"] for h in analysis["holdings"]]
+                w_names = [h["name"][:15] for h in analysis["holdings"]]
+                fig_w   = go.Figure(go.Pie(
+                    labels=w_names,
+                    values=weights,
+                    hole=0.55,
+                    marker=dict(
+                        colors=["#667eea","#f59e0b","#22c55e","#ef4444","#a78bfa",
+                                "#38bdf8","#fb923c","#34d399","#f472b6","#facc15"],
+                    ),
+                    textfont=dict(color="#ffffff"),
+                ))
+                fig_w.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#e2e8f0"),
+                    height=300,
+                    margin=dict(l=0,r=0,t=20,b=0),
+                    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+                )
+                st.plotly_chart(fig_w, use_container_width=True)
+
+            # ── Correlation Heatmap ────────────────────────────────────────
+            corr_matrix = metrics.get("corr_matrix")
+            if corr_matrix is not None and not corr_matrix.empty:
+                st.markdown("### 🔗 Holding Correlation Matrix")
+                st.markdown('<p style="color:#8892b0;font-size:12px">Based on 1-year daily returns. Values near +1 = move together, near -1 = move oppositely. Lower correlation = better diversification.</p>', unsafe_allow_html=True)
+
+                # Shorten ticker labels for display
+                short_labels = [t.replace(".NS","").replace(".BO","") for t in corr_matrix.columns]
+
+                fig_corr = go.Figure(go.Heatmap(
+                    z=corr_matrix.values,
+                    x=short_labels,
+                    y=short_labels,
+                    zmin=-1, zmax=1,
+                    colorscale=[
+                        [0.0,  "#ef4444"],
+                        [0.5,  "#1a1d2e"],
+                        [1.0,  "#22c55e"],
+                    ],
+                    text=[[f"{v:.2f}" for v in row] for row in corr_matrix.values],
+                    texttemplate="%{text}",
+                    textfont=dict(size=12, color="#ffffff"),
+                    colorbar=dict(
+                        title=dict(text="Correlation", font=dict(color="#e2e8f0")),
+                        tickfont=dict(color="#e2e8f0"),
+                    ),
+                ))
+                fig_corr.update_layout(
+                    paper_bgcolor="#0f1117",
+                    plot_bgcolor="#0f1117",
+                    font=dict(color="#e2e8f0"),
+                    height=380,
+                    margin=dict(l=60,r=20,t=20,b=60),
+                    xaxis=dict(tickfont=dict(color="#e2e8f0")),
+                    yaxis=dict(tickfont=dict(color="#e2e8f0")),
+                )
+                st.plotly_chart(fig_corr, use_container_width=True)
+
+                # Highlight highest off-diagonal correlation pair
+                corr_vals = corr_matrix.copy()
+                np.fill_diagonal(corr_vals.values, np.nan)
+                max_idx   = np.unravel_index(np.nanargmax(corr_vals.values), corr_vals.shape)
+                min_idx   = np.unravel_index(np.nanargmin(corr_vals.values), corr_vals.shape)
+                t_max_a   = short_labels[max_idx[0]]; t_max_b = short_labels[max_idx[1]]
+                t_min_a   = short_labels[min_idx[0]]; t_min_b = short_labels[min_idx[1]]
+                max_corr  = corr_vals.values[max_idx]
+                min_corr  = corr_vals.values[min_idx]
+
+                ic1, ic2 = st.columns(2)
+                ic1.markdown(f'<div class="metric-card"><div class="metric-label">Most Correlated Pair</div><div class="metric-value" style="font-size:16px;color:#f59e0b">{t_max_a} ↔ {t_max_b}</div><div style="color:#f59e0b;font-size:13px">r = {max_corr:.2f} — limited diversification benefit</div></div>', unsafe_allow_html=True)
+                ic2.markdown(f'<div class="metric-card"><div class="metric-label">Least Correlated Pair</div><div class="metric-value" style="font-size:16px;color:#22c55e">{t_min_a} ↔ {t_min_b}</div><div style="color:#22c55e;font-size:13px">r = {min_corr:.2f} — best diversification pair</div></div>', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ── Rebalancing Hints ─────────────────────────────────────────
+            hints = metrics.get("rebalancing", [])
+            if hints:
+                st.markdown("### ⚖️ Rebalancing Suggestions")
+                for hint in hints:
+                    st.markdown(
+                        f'<div style="background:#1a1d2e;border:1px solid #2d3154;border-radius:8px;'
+                        f'padding:10px 14px;margin-bottom:8px;color:#e2e8f0;font-size:13px">{hint}</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown("<br>", unsafe_allow_html=True)
+
+            # ── AI Analysis ────────────────────────────────────────────────
             st.markdown("### 🤖 AI Portfolio Advice")
             if st.button("🧠 Generate AI Analysis", type="primary"):
                 with st.spinner("AI is analysing your portfolio..."):
-                    prompt = build_portfolio_prompt(analysis)
+                    prompt     = build_portfolio_prompt(analysis)
                     ai_response = rag_engine.llm.invoke(prompt) if rag_engine.llm else None
                     if ai_response:
                         advice = ai_response.content if hasattr(ai_response, "content") else str(ai_response)
