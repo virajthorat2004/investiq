@@ -1,18 +1,61 @@
 """
 core/stock_data.py
 Fetches live NSE/BSE stock data using yfinance.
-Fixed v2: 
-  - Uses fast_info as primary source (much faster, less rate-limited)
-  - Falls back to .info only if fast_info is missing price
-  - Longer delay between retries (5s instead of 3s)
-  - Added jitter to avoid thundering herd on retries
+v3 — Triple-layer caching to defeat Yahoo Finance rate limiting:
+  Layer 1: Streamlit memory cache (5 min TTL) — survives reruns
+  Layer 2: Disk cache fallback — survives Yahoo outages
+  Layer 3: Retry with jitter — handles transient failures
 """
 
 import yfinance as yf
 import pandas as pd
 import time
 import random
+import json
+import os
+import pickle
+from pathlib import Path
 from datetime import datetime, timedelta
+import streamlit as st
+
+
+# ── Disk cache setup ────────────────────────────────────────────────────────
+CACHE_DIR = Path(".yahoo_cache")
+CACHE_DIR.mkdir(exist_ok=True)
+DISK_CACHE_MAX_AGE_HOURS = 24  # Serve stale data up to 24h old if Yahoo is down
+
+
+def _disk_cache_path(key: str, kind: str) -> Path:
+    """Returns disk cache file path for a given key."""
+    safe_key = key.replace("/", "_").replace("\\", "_")
+    return CACHE_DIR / f"{kind}_{safe_key}.pkl"
+
+
+def _save_to_disk(key: str, kind: str, data) -> None:
+    """Saves successful fetch to disk for fallback use."""
+    try:
+        path = _disk_cache_path(key, kind)
+        with open(path, "wb") as f:
+            pickle.dump({"timestamp": datetime.now(), "data": data}, f)
+    except Exception:
+        pass  # Disk cache is best-effort, never crash on save fail
+
+
+def _load_from_disk(key: str, kind: str):
+    """Loads from disk cache if exists and not too old. Returns (data, age_hours) or (None, None)."""
+    try:
+        path = _disk_cache_path(key, kind)
+        if not path.exists():
+            return None, None
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+        age = datetime.now() - payload["timestamp"]
+        age_hours = age.total_seconds() / 3600
+        if age_hours > DISK_CACHE_MAX_AGE_HOURS:
+            return None, None
+        return payload["data"], round(age_hours, 1)
+    except Exception:
+        return None, None
 
 
 def clean_ticker(ticker: str) -> str:
@@ -54,10 +97,7 @@ POPULAR_STOCKS = {
 
 
 def _is_valid_info(info: dict) -> bool:
-    """
-    Yahoo Finance returns a near-empty dict when rate-limited or blocked.
-    A valid response always has more than 5 keys with real data.
-    """
+    """Yahoo returns near-empty dict when rate-limited. Detect that."""
     if not info or not isinstance(info, dict):
         return False
     if len(info) <= 5:
@@ -70,11 +110,8 @@ def _is_valid_info(info: dict) -> bool:
     return has_price
 
 
-def _get_price_from_fast_info(ticker_obj) -> dict | None:
-    """
-    Uses yfinance fast_info — a lightweight endpoint that's much less
-    rate-limited than .info. Returns price data dict or None.
-    """
+def _get_price_from_fast_info(ticker_obj):
+    """Uses yfinance fast_info — lightweight endpoint, less rate-limited."""
     try:
         fi = ticker_obj.fast_info
         price = getattr(fi, "last_price", None) or getattr(fi, "regular_market_price", None)
@@ -101,22 +138,41 @@ def _get_price_from_fast_info(ticker_obj) -> dict | None:
     return None
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# LAYER 1: Streamlit memory cache (5 min)
+# ════════════════════════════════════════════════════════════════════════════
+@st.cache_data(ttl=300, show_spinner=False)
 def get_stock_info(ticker: str, retries: int = 3, delay: int = 5) -> dict:
     """
-    Returns key info about a stock: name, price, change, market cap etc.
-    
-    Strategy:
-      1. Try fast_info first (lightweight, less rate-limited) for price data
-      2. Try .info for name, PE, sector, summary
-      3. If .info is rate-limited, use fast_info data + history fallback
+    Returns key info about a stock.
+    Cached for 5 min. Falls back to disk cache if Yahoo is down.
     """
+    result = _fetch_stock_info_uncached(ticker, retries, delay)
+
+    # If success, save to disk for future fallback
+    if "error" not in result and result.get("current_price", 0) > 0:
+        _save_to_disk(ticker, "info", result)
+        return result
+
+    # If failed, try disk cache
+    cached, age_hours = _load_from_disk(ticker, "info")
+    if cached:
+        cached["_stale"] = True
+        cached["_stale_hours"] = age_hours
+        return cached
+
+    return result  # Return error dict if no fallback available
+
+
+def _fetch_stock_info_uncached(ticker: str, retries: int = 3, delay: int = 5) -> dict:
+    """The actual fetching logic (uncached). Called by cached wrapper."""
     last_error = ""
 
     for attempt in range(retries):
         try:
             stock = yf.Ticker(ticker)
 
-            # Step 1: Try fast_info for price (much more reliable)
+            # Step 1: Try fast_info first
             fast_data = _get_price_from_fast_info(stock)
 
             # Step 2: Try .info for metadata
@@ -126,15 +182,12 @@ def get_stock_info(ticker: str, retries: int = 3, delay: int = 5) -> dict:
             except Exception:
                 pass
 
-            # Step 3: If fast_info got us a price, we can proceed even if .info failed
+            # Step 3: fast_info worked — use it
             if fast_data:
                 current_price = fast_data["current_price"]
                 prev_close = fast_data["previous_close"]
-
-                # Get name from info if available, else fall back to history
                 name = info.get("longName") or info.get("shortName")
                 if not name:
-                    # Last resort: derive a display name from ticker
                     name = ticker.replace(".NS", "").replace(".BO", "")
 
                 return {
@@ -155,7 +208,7 @@ def get_stock_info(ticker: str, retries: int = 3, delay: int = 5) -> dict:
                     "summary": info.get("longBusinessSummary", "No description available."),
                 }
 
-            # Step 4: fast_info failed too — try .info directly
+            # Step 4: fast_info failed — try .info directly
             if _is_valid_info(info):
                 current_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
                 prev_close = info.get("previousClose", current_price)
@@ -180,18 +233,15 @@ def get_stock_info(ticker: str, retries: int = 3, delay: int = 5) -> dict:
                     "summary": info.get("longBusinessSummary", "No description available."),
                 }
 
-            # Both failed — rate limited. Wait with jitter and retry.
-            last_error = "Both fast_info and .info returned empty (Yahoo Finance rate limit)"
+            last_error = "Both fast_info and .info returned empty (Yahoo rate limit)"
             if attempt < retries - 1:
-                wait = delay + random.uniform(0, 3)  # jitter prevents thundering herd
-                time.sleep(wait)
+                time.sleep(delay + random.uniform(0, 3))
             continue
 
         except Exception as e:
             last_error = str(e)
             if attempt < retries - 1:
-                wait = delay + random.uniform(0, 2)
-                time.sleep(wait)
+                time.sleep(delay + random.uniform(0, 2))
             continue
 
     return {
@@ -200,24 +250,35 @@ def get_stock_info(ticker: str, retries: int = 3, delay: int = 5) -> dict:
     }
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_historical_data(ticker: str, period: str = "6mo", retries: int = 3, delay: int = 5) -> pd.DataFrame:
     """
-    Returns OHLCV historical price data.
-    period options: 1mo, 3mo, 6mo, 1y, 2y
-    Uses download() instead of .history() — more reliable, fewer rate limits.
+    Returns OHLCV historical price data. Cached + disk fallback.
     """
+    df = _fetch_historical_uncached(ticker, period, retries, delay)
+
+    if not df.empty:
+        _save_to_disk(f"{ticker}_{period}", "hist", df)
+        return df
+
+    # Fallback to disk
+    cached, age_hours = _load_from_disk(f"{ticker}_{period}", "hist")
+    if cached is not None and not cached.empty:
+        return cached
+
+    return pd.DataFrame()
+
+
+def _fetch_historical_uncached(ticker: str, period: str, retries: int, delay: int) -> pd.DataFrame:
+    """Uncached historical data fetch."""
     for attempt in range(retries):
         try:
-            # yf.download is more stable than ticker.history for single tickers
             df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
-
             if df.empty:
                 if attempt < retries - 1:
                     time.sleep(delay + random.uniform(0, 2))
                 continue
 
-            # yf.download returns MultiIndex columns when downloading single ticker
-            # Flatten if needed
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
@@ -225,7 +286,6 @@ def get_historical_data(ticker: str, period: str = "6mo", retries: int = 3, dela
             df = df[["Open", "High", "Low", "Close", "Volume"]]
             df.columns = ["open", "high", "low", "close", "volume"]
             return df
-
         except Exception:
             if attempt < retries - 1:
                 time.sleep(delay + random.uniform(0, 2))
@@ -234,11 +294,26 @@ def get_historical_data(ticker: str, period: str = "6mo", retries: int = 3, dela
     return pd.DataFrame()
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def get_financials_summary(ticker: str, retries: int = 3, delay: int = 5) -> dict:
     """
-    Returns revenue, earnings summary for fundamental context.
-    Retries up to 3 times if Yahoo Finance returns empty data.
+    Returns revenue, earnings summary. Cached for 10 min (financials change slowly).
     """
+    result = _fetch_financials_uncached(ticker, retries, delay)
+
+    if result:
+        _save_to_disk(ticker, "fin", result)
+        return result
+
+    cached, _ = _load_from_disk(ticker, "fin")
+    if cached:
+        return cached
+
+    return {}
+
+
+def _fetch_financials_uncached(ticker: str, retries: int, delay: int) -> dict:
+    """Uncached financials fetch."""
     for attempt in range(retries):
         try:
             stock = yf.Ticker(ticker)
@@ -259,7 +334,6 @@ def get_financials_summary(ticker: str, retries: int = 3, delay: int = 5) -> dic
                 "earnings_growth": info.get("earningsGrowth", None),
                 "revenue_growth": info.get("revenueGrowth", None),
             }
-
         except Exception:
             if attempt < retries - 1:
                 time.sleep(delay + random.uniform(0, 2))
