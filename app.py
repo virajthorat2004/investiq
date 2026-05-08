@@ -196,6 +196,13 @@ elif page == "🔍 Stock Analysis":
                 add_to_watchlist(ticker)
                 st.success("Added!")
 
+        # Force refresh button — clears all caches and re-fetches from Yahoo
+        if st.button("🔄 Force Refresh Data", width='stretch'):
+            st.cache_data.clear()
+            st.session_state.stock_data_loaded = False
+            st.success("Cache cleared! Click 'Analyse Stock' to fetch fresh data.")
+            st.rerun()
+
         st.divider()
         st.markdown("### 💬 Quick Questions")
         for q in ["Why did this stock move today?", "What is the overall sentiment?", "Should I be concerned about risks?", "Give me a buy/hold/sell outlook"]:
@@ -217,9 +224,13 @@ elif page == "🔍 Stock Analysis":
             stock_info, hist_df, financials, articles, sentiment, news_text = load_all_data(ticker, period)
             if "error" in stock_info or stock_info.get("current_price", 0) == 0:
                 st.error("⚠️ Could not load stock data right now.")
-                st.info("💡 Yahoo Finance may be busy. Wait 2-3 minutes and try again.")
+                st.info("💡 Yahoo Finance may be busy. Wait 2-3 minutes and try again, or click '🔄 Force Refresh' in the sidebar.")
                 st.stop()
             else:
+                # Show stale-data warning if served from disk cache
+                if stock_info.get("_stale"):
+                    st.warning(f"⚠️ Showing cached data from {stock_info['_stale_hours']}h ago — Yahoo Finance is currently rate-limiting us. Data is still useful for analysis but may not reflect today's prices.")
+
                 st.session_state.current_stock_info = stock_info
                 st.session_state.hist_df = hist_df
                 st.session_state.financials = financials
@@ -229,7 +240,7 @@ elif page == "🔍 Stock Analysis":
                 st.session_state.chat_history = []
                 rag_success = rag_engine.build_knowledge_base(news_text, stock_info, financials)
                 if rag_success:
-                    st.success("✅ AI Knowledge base ready!")
+                    st.success(" AI Knowledge base ready!")
 
     st.markdown('<div class="app-title">InvestIQ 📊</div>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center; color:#8892b0">AI-Powered Research Analyst for Indian Stock Markets</p>', unsafe_allow_html=True)
