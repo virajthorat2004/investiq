@@ -64,18 +64,19 @@ def get_index_data() -> list[dict]:
 
 
 def get_top_gainers_losers(n: int = 5) -> dict:
-    """
-    Fetches top N gainers and losers from Nifty 50 stocks.
-    Not cached — only called on button click so no need.
-    """
+    """Fetches top N gainers and losers from Nifty 50 stocks."""
     movers = []
     for ticker in NIFTY50_STOCKS:
         try:
-            info = yf.Ticker(ticker).info
-            prev = info.get("previousClose", 0)
-            curr = info.get("currentPrice") or info.get("regularMarketPrice", 0)
-            name = info.get("shortName", ticker.replace(".NS", ""))
-            if prev and curr:
+            stock = yf.Ticker(ticker)
+            # Use history instead of info — more reliable
+            hist = stock.history(period="2d")
+            if len(hist) < 2:
+                continue
+            prev = hist["Close"].iloc[-2]
+            curr = hist["Close"].iloc[-1]
+            name = stock.info.get("shortName", ticker.replace(".NS",""))
+            if prev and curr and prev > 0:
                 change_pct = (curr - prev) / prev * 100
                 movers.append({
                     "ticker": ticker,
@@ -88,10 +89,9 @@ def get_top_gainers_losers(n: int = 5) -> dict:
 
     movers.sort(key=lambda x: x["change_pct"], reverse=True)
     return {
-        "gainers": movers[:n],
-        "losers": movers[-n:][::-1],
+        "gainers": [m for m in movers if m["change_pct"] > 0][:n] or movers[:n],
+        "losers": [m for m in movers if m["change_pct"] < 0][-n:][::-1] or movers[-n:][::-1],
     }
-
 
 @st.cache_data(ttl=180)
 def get_nifty_history(period: str = "1mo") -> pd.DataFrame:
