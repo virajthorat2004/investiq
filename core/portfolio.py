@@ -63,28 +63,52 @@ def get_portfolio_hist(tickers: list[str], period: str = "1y") -> pd.DataFrame:
     Downloads adjusted-close history for all holdings + Nifty 50 benchmark.
     Returns a DataFrame of daily % returns, columns = tickers + "^NSEI".
     Missing/short tickers are silently dropped.
+    Robust against Streamlit Cloud rate-limiting via retries.
     """
-    all_tickers = list(set(tickers)) + ["^NSEI"]
-    try:
-        raw = yf.download(
-            all_tickers,
-            period=period,
-            auto_adjust=True,
-            progress=False,
-            threads=True,
-        )
-        # yfinance returns MultiIndex when >1 ticker
-        if isinstance(raw.columns, pd.MultiIndex):
-            prices = raw["Close"]
-        else:
-            prices = raw[["Close"]] if "Close" in raw.columns else raw
+    import time, random
 
-        # Keep only columns that have enough data (>60 rows)
-        prices = prices.dropna(axis=1, thresh=60)
-        returns = prices.pct_change().dropna(how="all")
-        return returns
-    except Exception:
-        return pd.DataFrame()
+    all_tickers = list(set(tickers)) + ["^NSEI"]
+
+    for attempt in range(3):
+        try:
+            raw = yf.download(
+                all_tickers,
+                period=period,
+                auto_adjust=True,
+                progress=False,
+                threads=False,          # serial = less likely to be rate-limited
+                group_by="ticker",      # consistent MultiIndex regardless of count
+            )
+
+            if raw.empty:
+                time.sleep(random.uniform(2, 5))
+                continue
+
+            # Normalise to single-level Close columns
+            if isinstance(raw.columns, pd.MultiIndex):
+                # group_by="ticker" → top level is ticker, second is OHLCV
+                try:
+                    prices = raw.xs("Close", axis=1, level=1)
+                except KeyError:
+                    # fallback: group_by="column" layout
+                    prices = raw["Close"]
+            else:
+                prices = raw[["Close"]] if "Close" in raw.columns else raw
+
+            # Keep only columns with enough data
+            prices  = prices.dropna(axis=1, thresh=60)
+            returns = prices.pct_change().dropna(how="all")
+
+            if returns.empty:
+                time.sleep(random.uniform(2, 5))
+                continue
+
+            return returns
+
+        except Exception:
+            time.sleep(random.uniform(2, 5))
+
+    return pd.DataFrame()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -318,6 +342,9 @@ def analyse_portfolio(df: pd.DataFrame) -> dict:
             "pnl_pct":         round(pnl_pct, 2),
             "sentiment":       sentiment.get("overall", "Neutral"),
             "sentiment_score": sentiment.get("overall_score", 0),
+            # safe defaults overwritten once risk metrics are computed
+            "weight_pct":      0.0,
+            "beta":            None,
         })
 
         total_invested += invested
