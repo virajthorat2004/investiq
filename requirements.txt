@@ -19,3 +19,4 @@ fpdf2==2.8.7
 scikit-learn==1.8.0
 numpy==2.4.4
 langchain-huggingface
+prophet==1.1.6
