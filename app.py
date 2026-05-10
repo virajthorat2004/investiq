@@ -1,8 +1,9 @@
 """
-app.py - InvestIQ Full Version v5.0
-Changes in v5.0:
-  - Prediction tab upgraded: Prophet + Ridge Regression with MAE/RMSE/R²/MAPE
-    evaluation on 20% holdout, feature importance chart, test-fit overlay
+app.py - InvestIQ Full Version v5.1
+Changes in v5.1:
+  - Prediction tab: replaced Prophet (Python 3.14 incompatible) with
+    GradientBoostingRegressor — same features, same evaluation metrics,
+    fully compatible with Python 3.14 on Streamlit Cloud
 """
 
 import streamlit as st
@@ -82,7 +83,7 @@ if page == "🏠 Market Overview":
 
     with st.sidebar:
         ov_period = st.select_slider("Nifty Chart Period", options=["1mo","3mo","6mo","1y"], value="3mo")
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Refresh Data", width="stretch"):
             st.cache_data.clear()
             st.rerun()
 
@@ -118,7 +119,7 @@ if page == "🏠 Market Overview":
             yaxis=dict(gridcolor="#1e2230", title="Index Value"),
             height=300, margin=dict(l=0,r=0,t=10,b=0)
         )
-        st.plotly_chart(fig_nifty, use_container_width=True)
+        st.plotly_chart(fig_nifty, width="stretch")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -180,14 +181,14 @@ elif page == "🔍 Stock Analysis":
 
         period = st.select_slider("Chart Period", options=["1mo","2mo","3mo","4mo","5mo","6mo","9mo","1y","18mo","2y"], value="6mo")
 
-        load_btn = st.button("🚀 Analyse Stock", use_container_width=True, type="primary")
+        load_btn = st.button("🚀 Analyse Stock", width="stretch", type="primary")
 
         if st.session_state.stock_data_loaded:
-            if st.button("➕ Add to Watchlist", use_container_width=True):
+            if st.button("➕ Add to Watchlist", width="stretch"):
                 add_to_watchlist(ticker)
                 st.success("Added!")
 
-        if st.button("🔄 Force Refresh Data", use_container_width=True):
+        if st.button("🔄 Force Refresh Data", width="stretch"):
             st.cache_data.clear()
             st.session_state.stock_data_loaded = False
             st.success("Cache cleared! Click 'Analyse Stock' to fetch fresh data.")
@@ -196,7 +197,7 @@ elif page == "🔍 Stock Analysis":
         st.divider()
         st.markdown("### 💬 Quick Questions")
         for q in ["Why did this stock move today?", "What is the overall sentiment?", "Should I be concerned about risks?", "Give me a buy/hold/sell outlook"]:
-            if st.button(q, use_container_width=True, key=f"qq_{q}"):
+            if st.button(q, width="stretch", key=f"qq_{q}"):
                 st.session_state.quick_question = q
 
     @st.cache_data(ttl=300)
@@ -307,11 +308,11 @@ elif page == "🔍 Stock Analysis":
                 fig.add_trace(go.Candlestick(x=hist_df.index, open=hist_df["open"], high=hist_df["high"], low=hist_df["low"], close=hist_df["close"], increasing_line_color="#22c55e", decreasing_line_color="#ef4444", name="OHLC"))
                 fig.add_trace(go.Scatter(x=hist_df.index, y=hist_df["close"].rolling(20).mean(), line=dict(color="#667eea", width=1.5), name="MA20"))
                 fig.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230", title="Price (₹)"), xaxis_rangeslider_visible=False, height=450, margin=dict(l=0,r=0,t=20,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
                 clrs = ["#22c55e" if c>=o else "#ef4444" for c,o in zip(hist_df["close"],hist_df["open"])]
                 vf = go.Figure(go.Bar(x=hist_df.index, y=hist_df["volume"], marker_color=clrs))
                 vf.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), height=160, margin=dict(l=0,r=0,t=5,b=0), yaxis=dict(gridcolor="#1e2230",title="Volume"), xaxis=dict(gridcolor="#1e2230"))
-                st.plotly_chart(vf, use_container_width=True)
+                st.plotly_chart(vf, width="stretch")
 
         # ── TAB 2: Technicals ────────────────────────────────────────────
         with tab2:
@@ -341,7 +342,7 @@ elif page == "🔍 Stock Analysis":
                 fb.add_trace(go.Scatter(x=df_ta.index, y=df_ta["bb_middle"], line=dict(color="#94a3b8",width=1), name="SMA20"))
                 fb.add_trace(go.Scatter(x=df_ta.index, y=df_ta["close"], line=dict(color="#ffffff",width=2), name="Close"))
                 fb.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230",title="Price (₹)"), height=280, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fb, use_container_width=True)
+                st.plotly_chart(fb, width="stretch")
 
                 fr = go.Figure()
                 fr.add_hrect(y0=70, y1=100, fillcolor="rgba(239,68,68,0.08)", line_width=0)
@@ -350,7 +351,7 @@ elif page == "🔍 Stock Analysis":
                 fr.add_hline(y=30, line_dash="dash", line_color="#22c55e", annotation_text="Oversold 30")
                 fr.add_trace(go.Scatter(x=df_ta.index, y=df_ta["rsi"], line=dict(color="#f59e0b",width=2), name="RSI"))
                 fr.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(range=[0,100],gridcolor="#1e2230"), height=200, margin=dict(l=0,r=0,t=10,b=0))
-                st.plotly_chart(fr, use_container_width=True)
+                st.plotly_chart(fr, width="stretch")
 
                 fm = go.Figure()
                 fm.add_trace(go.Scatter(x=df_ta.index, y=df_ta["macd"], line=dict(color="#667eea",width=2), name="MACD"))
@@ -358,7 +359,7 @@ elif page == "🔍 Stock Analysis":
                 hc = ["#22c55e" if v>=0 else "#ef4444" for v in df_ta["macd_hist"].fillna(0)]
                 fm.add_trace(go.Bar(x=df_ta.index, y=df_ta["macd_hist"], marker_color=hc, name="Histogram"))
                 fm.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230"), height=200, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                st.plotly_chart(fm, use_container_width=True)
+                st.plotly_chart(fm, width="stretch")
 
         # ── TAB 3: Compare ───────────────────────────────────────────────
         with tab3:
@@ -368,7 +369,7 @@ elif page == "🔍 Stock Analysis":
             t2 = cc2.text_input("Stock 2", value="INFY.NS", key="c2")
             with cc3:
                 st.markdown("<br>", unsafe_allow_html=True)
-                cbtn = st.button("Compare", type="primary", use_container_width=True)
+                cbtn = st.button("Compare", type="primary", width="stretch")
             if cbtn:
                 with st.spinner("Fetching..."):
                     cd = get_comparison_data(t1, t2, period)
@@ -387,7 +388,7 @@ elif page == "🔍 Stock Analysis":
                     fc.add_trace(go.Scatter(x=s2["hist"].index, y=nm2, line=dict(color="#f59e0b",width=2), name=n2))
                     fc.add_hline(y=100, line_dash="dash", line_color="#4a5568")
                     fc.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230",title="Performance (Base=100)"), height=350, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="#1a1d2e"))
-                    st.plotly_chart(fc, use_container_width=True)
+                    st.plotly_chart(fc, width="stretch")
                 metrics_cmp = compare_metrics(s1,s2)
                 hc1,hc2,hc3 = st.columns([2,1,1])
                 hc1.markdown('<div style="color:#8892b0;font-size:12px;font-weight:500">METRIC</div>', unsafe_allow_html=True)
@@ -404,13 +405,13 @@ elif page == "🔍 Stock Analysis":
                 st.info("Enter two tickers above and click Compare.")
 
         # ════════════════════════════════════════════════════════════════
-        # TAB 4: PREDICTION  (v5.0 — Prophet + Ridge, evaluation metrics)
+        # TAB 4: PREDICTION  (v5.1 — GradientBoosting + Ridge, evaluation metrics)
         # ════════════════════════════════════════════════════════════════
         with tab4:
             st.markdown(f"### 🔮 ML Price Prediction — {info['name']}")
             st.markdown(
                 '<p style="color:#8892b0;font-size:13px">'
-                "Trains Facebook Prophet (primary) and Ridge Regression (baseline) on "
+                "Trains Gradient Boosting (primary, 200 trees) and Ridge Regression (baseline) on "
                 "RSI, MACD, Bollinger %B and volume features. "
                 "Evaluates both on a 20% holdout test set."
                 "</p>",
@@ -429,7 +430,7 @@ elif page == "🔍 Stock Analysis":
             run_pred = st.button("🔮 Run ML Prediction", type="primary", key="run_pred_btn")
 
             if run_pred:
-                with st.spinner("Training Ridge Regression + Facebook Prophet …"):
+                with st.spinner("Training Ridge Regression + Gradient Boosting …"):
                     pred = predict_prices(hist, days_ahead=pred_days)
                 st.session_state["pred_result"]   = pred
                 st.session_state["pred_days_used"] = pred_days
@@ -445,7 +446,7 @@ elif page == "🔍 Stock Analysis":
             else:
                 # ── Top KPIs ─────────────────────────────────────────────
                 pm = pred.get("model_metrics", {})
-                best_r2 = pm.get("prophet", pm.get("ridge", {})).get("r2")
+                best_r2 = pm.get("gbr", pm.get("ridge", {})).get("r2")
 
                 kc = st.columns(4)
                 kc[0].markdown(f'<div class="metric-card"><div class="metric-label">Current Price</div><div class="metric-value">₹{pred["current_price"]:,.2f}</div></div>', unsafe_allow_html=True)
@@ -471,8 +472,8 @@ elif page == "🔍 Stock Analysis":
 
                 metric_rows = []
                 model_display = {
-                    "ridge":   "Ridge Regression (Baseline)",
-                    "prophet": "Facebook Prophet (Primary)",
+                    "ridge": "Ridge Regression (Baseline)",
+                    "gbr":   "Gradient Boosting — GBR (Primary)",
                 }
                 for mkey, mlabel in model_display.items():
                     if mkey in pm:
@@ -497,14 +498,14 @@ elif page == "🔍 Stock Analysis":
 
                     st.dataframe(
                         metrics_df.style.apply(_highlight_best),
-                        use_container_width=True,
+                        width="stretch",
                     )
                     st.caption("🟢 Green = better score for that metric")
 
                 # ── Forecast chart ────────────────────────────────────────
-                primary_key = "prophet" if "prices" in pred.get("prophet", {}) else "ridge"
+                primary_key = "gbr" if "prices" in pred.get("gbr", {}) else "ridge"
                 primary     = pred[primary_key]
-                baseline    = pred.get("ridge") if primary_key == "prophet" else None
+                baseline    = pred.get("ridge") if primary_key == "gbr" else None
 
                 fig_pred = go.Figure()
 
@@ -530,20 +531,20 @@ elif page == "🔍 Stock Analysis":
                         line=dict(color="#a78bfa", width=1.5, dash="dash"),
                     ))
 
-                # Prophet confidence band
+                # GBR confidence band
                 fig_pred.add_trace(go.Scatter(
                     x=primary["dates"] + primary["dates"][::-1],
                     y=primary["upper"] + primary["lower"][::-1],
                     fill="toself",
                     fillcolor="rgba(167,139,250,0.15)",
                     line=dict(color="rgba(0,0,0,0)"),
-                    name="80% Confidence Band",
+                    name="Confidence Band",
                 ))
 
-                # Prophet forecast line
+                # GBR forecast line
                 fig_pred.add_trace(go.Scatter(
                     x=primary["dates"], y=primary["prices"],
-                    name=primary.get("model", "Prophet"),
+                    name=primary.get("model", "Gradient Boosting"),
                     line=dict(color="#a78bfa", width=2.5),
                 ))
 
@@ -567,29 +568,21 @@ elif page == "🔍 Stock Analysis":
                     xaxis=dict(gridcolor="#1e2230"),
                     yaxis=dict(gridcolor="#1e2230"),
                 )
-                st.plotly_chart(fig_pred, use_container_width=True)
+                st.plotly_chart(fig_pred, width="stretch")
 
-                # ── Feature importance (Ridge coefficients) ───────────────
-                if "features_df" in pred:
-                    st.markdown("### 🔬 Feature Contribution (Ridge Coefficients)")
-                    st.caption("Absolute standardised coefficients — larger bar = more influence on price prediction.")
+                # ── Feature importance (GBR native importances) ──────────
+                if "gbr" in pred and "feature_importances" in pred.get("gbr", {}):
+                    st.markdown("### 🔬 Feature Importance (Gradient Boosting)")
+                    st.caption("Native GBR feature importances — larger bar = more influence on price prediction.")
                     try:
-                        from sklearn.linear_model import Ridge as _Ridge
-                        from sklearn.preprocessing import StandardScaler as _Scaler
-
-                        feat_df = pred["features_df"][FEATURE_COLS]
-                        y_feat  = pred["features_df"]["close"].values
-                        _sc     = _Scaler()
-                        _m      = _Ridge(alpha=1.0)
-                        _m.fit(_sc.fit_transform(feat_df.values), y_feat)
-
+                        fi = pred["gbr"]["feature_importances"]
                         coef_df = pd.DataFrame({
-                            "Feature":     FEATURE_COLS,
-                            "Coefficient": np.abs(_m.coef_),
-                        }).sort_values("Coefficient", ascending=True)   # ascending for horizontal bar
+                            "Feature":    list(fi.keys()),
+                            "Importance": list(fi.values()),
+                        }).sort_values("Importance", ascending=True)
 
                         fig_coef = go.Figure(go.Bar(
-                            x=coef_df["Coefficient"],
+                            x=coef_df["Importance"],
                             y=coef_df["Feature"],
                             orientation="h",
                             marker_color="#60a5fa",
@@ -600,17 +593,17 @@ elif page == "🔍 Stock Analysis":
                             plot_bgcolor="rgba(0,0,0,0)",
                             height=300,
                             margin=dict(l=10, r=10, t=10, b=10),
-                            xaxis_title="|Coefficient| (standardised)",
+                            xaxis_title="Feature Importance",
                             xaxis=dict(gridcolor="#1e2230"),
                             yaxis=dict(gridcolor="#1e2230"),
                         )
-                        st.plotly_chart(fig_coef, use_container_width=True)
+                        st.plotly_chart(fig_coef, width="stretch")
                     except Exception:
-                        pass   # silently skip if feature df not available
+                        pass
 
                 st.caption(
                     "⚠️ Forecasts are model outputs only — not financial advice. "
-                    "Prophet: Taylor & Letham (2018), *The American Statistician*."
+                    "GBR reference: Friedman (2001), *Annals of Statistics*."
                 )
 
         # ── TAB 5: News ──────────────────────────────────────────────────
@@ -630,7 +623,7 @@ elif page == "🔍 Stock Analysis":
                 if sum(dist.values())>0:
                     pf = go.Figure(go.Pie(labels=list(dist.keys()), values=list(dist.values()), hole=0.6, marker_colors=["#22c55e","#ef4444","#94a3b8"]))
                     pf.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e2e8f0"), height=230, margin=dict(l=0,r=0,t=10,b=0), legend=dict(bgcolor="rgba(0,0,0,0)"))
-                    st.plotly_chart(pf, use_container_width=True)
+                    st.plotly_chart(pf, width="stretch")
                 st.markdown(f'<div class="metric-card"><div class="metric-label">Overall</div><div class="metric-value">{sentiment.get("overall","Neutral")}</div></div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="background:#1a1d2e;border:1px solid #2d3154;border-radius:10px;padding:12px;margin-top:8px;color:#94a3b8;font-size:13px;line-height:1.7">{sentiment.get("summary","")}</div>', unsafe_allow_html=True)
 
@@ -740,7 +733,7 @@ elif page == "🔍 Stock Analysis":
                     fig_sp.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), height=460, margin=dict(l=0,r=0,t=30,b=0), legend=dict(bgcolor="#1a1d2e"))
                     for axis in ["xaxis","xaxis2","yaxis","yaxis2"]:
                         fig_sp.update_layout(**{axis: dict(gridcolor="#1e2230")})
-                    st.plotly_chart(fig_sp, use_container_width=True)
+                    st.plotly_chart(fig_sp, width="stretch")
 
                 st.markdown("#### 🔗 Correlation at Each Lag")
                 st.markdown('<p style="color:#8892b0;font-size:12px">Each row tests: \'did sentiment on day N predict price return on day N+lag?\'</p>', unsafe_allow_html=True)
@@ -786,7 +779,7 @@ elif page == "🔍 Stock Analysis":
                         fig_sc.add_vline(x=0, line_dash="dot", line_color="#4a5568")
                         fig_sc.add_hline(y=0, line_dash="dot", line_color="#4a5568")
                         fig_sc.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230", title="Sentiment Score (day N)"), yaxis=dict(gridcolor="#1e2230", title=f"Price Return % (day N+{best_lag})"), height=320, margin=dict(l=0,r=0,t=20,b=0), legend=dict(bgcolor="#1a1d2e"))
-                        st.plotly_chart(fig_sc, use_container_width=True)
+                        st.plotly_chart(fig_sc, width="stretch")
 
                 st.markdown('<p style="color:#4a5568;font-size:11px;margin-top:8px">⚠️ Correlation does not imply causation. Based on limited news data and short time window. Not financial advice.</p>', unsafe_allow_html=True)
                 st.markdown(f'<div style="color:#8892b0;font-size:11px">Articles analysed: {sp["article_count"]} · Days with news: {len(sp["sentiment_series"])}</div>', unsafe_allow_html=True)
@@ -807,7 +800,7 @@ elif page == "🔍 Stock Analysis":
             with st.form("cf", clear_on_submit=True):
                 fi1,fi2 = st.columns([5,1])
                 typed = fi1.text_input("Ask a question", placeholder="Ask anything about this stock...", label_visibility="collapsed")
-                send = fi2.form_submit_button("Send", use_container_width=True)
+                send = fi2.form_submit_button("Send", width="stretch")
             if send and typed: user_input = typed
             if user_input:
                 st.session_state.chat_history.append({"role":"user","content":user_input})
@@ -829,7 +822,7 @@ elif page == "🔔 Watchlist":
     with st.sidebar:
         st.markdown("### ➕ Add Stock")
         new_t = st.text_input("Ticker (e.g. WIPRO.NS)")
-        if st.button("Add to Watchlist", use_container_width=True):
+        if st.button("Add to Watchlist", width="stretch"):
             if new_t:
                 t = new_t.strip().upper()
                 if "." not in t: t += ".NS"
@@ -862,7 +855,7 @@ elif page == "🔔 Watchlist":
                     remove_from_watchlist(w["ticker"])
                     st.rerun()
 
-        if st.button("🔄 Refresh Prices", use_container_width=True):
+        if st.button("🔄 Refresh Prices", width="stretch"):
             st.cache_data.clear()
             st.rerun()
 
@@ -878,7 +871,7 @@ elif page == "🏭 Sector Heatmap":
     st.markdown("### 📊 Sector Performance")
     st.markdown('<p style="color:#8892b0;font-size:13px">Click below to fetch live sector data (~15–20 seconds)</p>', unsafe_allow_html=True)
 
-    load_sector = st.button("🔄 Load Sector Heatmap", type="primary", use_container_width=True)
+    load_sector = st.button("🔄 Load Sector Heatmap", type="primary", width="stretch")
 
     if load_sector:
         with st.spinner("Fetching sector data... (takes ~20 seconds)"):
@@ -894,13 +887,13 @@ elif page == "🏭 Sector Heatmap":
                 textfont=dict(size=16, color="#ffffff"),
             ))
             fig_tree.update_layout(paper_bgcolor="#0f1117", margin=dict(l=0,r=0,t=10,b=0), height=450)
-            st.plotly_chart(fig_tree, use_container_width=True)
+            st.plotly_chart(fig_tree, width="stretch")
 
             sector_df_sorted = sector_df.sort_values("change_pct", ascending=True)
             bar_colors = ["#22c55e" if v >= 0 else "#ef4444" for v in sector_df_sorted["change_pct"]]
             fig_bar = go.Figure(go.Bar(x=sector_df_sorted["change_pct"], y=sector_df_sorted["sector"], orientation="h", marker_color=bar_colors, text=[f"{v:+.2f}%" for v in sector_df_sorted["change_pct"]], textposition="outside", textfont=dict(color="#e2e8f0")))
             fig_bar.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230", title="% Change Today"), yaxis=dict(gridcolor="#1e2230"), height=320, margin=dict(l=0,r=60,t=10,b=0))
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width="stretch")
 
             best = sector_df.loc[sector_df["change_pct"].idxmax()]
             worst = sector_df.loc[sector_df["change_pct"].idxmin()]
@@ -1040,7 +1033,7 @@ elif page == "🧠 Portfolio Analyser":
                 bar_c = ["#22c55e" if p >= 0 else "#ef4444" for p in pnls]
                 fig_pnl = go.Figure(go.Bar(x=names, y=pnls, marker_color=bar_c, text=[f"{p:+.1f}%" for p in pnls], textposition="outside", textfont=dict(color="#e2e8f0")))
                 fig_pnl.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), xaxis=dict(gridcolor="#1e2230"), yaxis=dict(gridcolor="#1e2230", title="P&L %"), height=300, margin=dict(l=0,r=0,t=20,b=0))
-                st.plotly_chart(fig_pnl, use_container_width=True)
+                st.plotly_chart(fig_pnl, width="stretch")
 
             with chart_col2:
                 st.markdown("### 🥧 Portfolio Weight")
@@ -1048,7 +1041,7 @@ elif page == "🧠 Portfolio Analyser":
                 w_names = [h["name"][:15] for h in analysis["holdings"]]
                 fig_w = go.Figure(go.Pie(labels=w_names, values=weights, hole=0.55, marker=dict(colors=["#667eea","#f59e0b","#22c55e","#ef4444","#a78bfa","#38bdf8","#fb923c","#34d399","#f472b6","#facc15"]), textfont=dict(color="#ffffff")))
                 fig_w.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e2e8f0"), height=300, margin=dict(l=0,r=0,t=20,b=0), legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)))
-                st.plotly_chart(fig_w, use_container_width=True)
+                st.plotly_chart(fig_w, width="stretch")
 
             corr_matrix = metrics.get("corr_matrix")
             if corr_matrix is not None and not corr_matrix.empty:
@@ -1057,7 +1050,7 @@ elif page == "🧠 Portfolio Analyser":
                 short_labels = [t.replace(".NS","").replace(".BO","") for t in corr_matrix.columns]
                 fig_corr = go.Figure(go.Heatmap(z=corr_matrix.values, x=short_labels, y=short_labels, zmin=-1, zmax=1, colorscale=[[0.0,"#ef4444"],[0.5,"#1a1d2e"],[1.0,"#22c55e"]], text=[[f"{v:.2f}" for v in row] for row in corr_matrix.values], texttemplate="%{text}", textfont=dict(size=12, color="#ffffff"), colorbar=dict(title=dict(text="Correlation", font=dict(color="#e2e8f0")), tickfont=dict(color="#e2e8f0"))))
                 fig_corr.update_layout(paper_bgcolor="#0f1117", plot_bgcolor="#0f1117", font=dict(color="#e2e8f0"), height=380, margin=dict(l=60,r=20,t=20,b=60), xaxis=dict(tickfont=dict(color="#e2e8f0")), yaxis=dict(tickfont=dict(color="#e2e8f0")))
-                st.plotly_chart(fig_corr, use_container_width=True)
+                st.plotly_chart(fig_corr, width="stretch")
 
                 corr_arr = corr_matrix.values.astype(float)
                 np.fill_diagonal(corr_arr, np.nan)
